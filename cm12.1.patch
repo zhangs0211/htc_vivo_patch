@@ -1,0 +1,113 @@
+
+project build/
+diff --git a/core/Makefile b/core/Makefile
+index f3b5261..0e4ea38 100644
+--- a/core/Makefile
++++ b/core/Makefile
+@@ -1624,7 +1624,9 @@ ifdef PRODUCT_EXTRA_RECOVERY_KEYS
+ 	$(hide) echo "extra_recovery_keys=$(PRODUCT_EXTRA_RECOVERY_KEYS)" >> $(zip_root)/META/misc_info.txt
+ endif
+ 	$(hide) echo 'mkbootimg_args=$(BOARD_MKBOOTIMG_ARGS)' >> $(zip_root)/META/misc_info.txt
++ifneq ($(USE_SET_METADATA),false) 
+ 	$(hide) echo "use_set_metadata=1" >> $(zip_root)/META/misc_info.txt
++endif
+ 	$(hide) echo "multistage_support=1" >> $(zip_root)/META/misc_info.txt
+ 	$(hide) echo "update_rename_support=1" >> $(zip_root)/META/misc_info.txt
+ 	$(hide) echo "blockimgdiff_versions=1,2,3" >> $(zip_root)/META/misc_info.txt
+
+project device/htc/vivo/
+diff --git a/overlay/frameworks/base/core/res/res/values/config.xml b/overlay/frameworks/base/core/res/res/values/config.xml
+index 54b4fda..65f29bc 100644
+--- a/overlay/frameworks/base/core/res/res/values/config.xml
++++ b/overlay/frameworks/base/core/res/res/values/config.xml
+@@ -182,7 +182,7 @@
+ 
+     <!-- Whether to set a system prop (sys.orientation.landscape)
+          when rotating for devices that have rotating buttons -->
+-    <bool name="config_setLandscapeProp">true</bool>
++    <bool name="config_setLandscapeProp">false</bool>
+     
+     <!-- Indicate whether the SD card is accessible without removing the battery. -->
+     <bool name="config_batterySdCardAccessibility">true</bool>
+
+project frameworks/base/
+diff --git a/core/res/res/values/cm_symbols.xml b/core/res/res/values/cm_symbols.xml
+index 7094bb3..7e6f1b7 100644
+--- a/core/res/res/values/cm_symbols.xml
++++ b/core/res/res/values/cm_symbols.xml
+@@ -211,6 +211,7 @@
+     <java-symbol type="string" name="theme_install_error_message" />
+     <!-- Package Manager -->
+     <java-symbol type="array" name="config_disabledComponents" />
++    <java-symbol type="bool" name="config_setLandscapeProp" />
+     <java-symbol type="array" name="config_forceEnabledComponents" />
+ 
+     <!-- Last app switch animations -->
+diff --git a/core/res/res/values/config.xml b/core/res/res/values/config.xml
+index 46e34ae..cbaa121 100755
+--- a/core/res/res/values/config.xml
++++ b/core/res/res/values/config.xml
+@@ -2296,7 +2296,11 @@
+     <!-- The list of components which should be automatically disabled. -->
+     <string-array name="config_disabledComponents" translatable="false">
+     </string-array>
+-
++    
++    <!-- Whether to set a system prop (sys.orientation.landscape)                                                                                                            
++         when rotating for devices that have rotating buttons -->
++    <bool name="config_setLandscapeProp">false</bool>
++    
+     <!-- The list of components which should be forced to be enabled. -->
+     <string-array name="config_forceEnabledComponents" translatable="false">
+     </string-array>
+diff --git a/services/core/java/com/android/server/wm/WindowManagerService.java b/services/core/java/com/android/server/wm/WindowManagerService.java
+index 584f014..e53de52 100644
+--- a/services/core/java/com/android/server/wm/WindowManagerService.java
++++ b/services/core/java/com/android/server/wm/WindowManagerService.java
+@@ -352,6 +352,8 @@ public class WindowManagerService extends IWindowManager.Stub
+ 
+     final boolean mLimitedAlphaCompositing;
+ 
++    final boolean mSetLandscapeProperty;
++
+     final WindowManagerPolicy mPolicy = PolicyManager.makeNewWindowManager();
+ 
+     final IActivityManager mActivityManager;
+@@ -847,6 +849,10 @@ public class WindowManagerService extends IWindowManager.Stub
+         mOnlyCore = onlyCore;
+         mLimitedAlphaCompositing = context.getResources().getBoolean(
+                 com.android.internal.R.bool.config_sf_limitedAlpha);
++        
++        mSetLandscapeProperty = context.getResources().getBoolean(
++                com.android.internal.R.bool.config_setLandscapeProp);
++
+         mHasPermanentDpad = context.getResources().getBoolean(
+                 com.android.internal.R.bool.config_hasPermanentDpad);
+         mInTouchMode = context.getResources().getBoolean(
+@@ -6171,6 +6177,12 @@ public class WindowManagerService extends IWindowManager.Stub
+         SystemProperties.set(StrictMode.VISUAL_PROPERTY, value);
+     }
+ 
++    /** {@hide} */
++    public void setLandscapeProperty(String value) {
++        if (!mSetLandscapeProperty) return;
++        SystemProperties.set("sys.orientation.landscape", value);
++    }
++
+     private static void convertCropForSurfaceFlinger(Rect crop, int rot, int dw, int dh) {
+         if (rot == Surface.ROTATION_90) {
+             final int tmp = crop.top;
+@@ -7398,6 +7410,13 @@ public class WindowManagerService extends IWindowManager.Stub
+         if (config != null) {
+             config.orientation = (dw <= dh) ? Configuration.ORIENTATION_PORTRAIT :
+                     Configuration.ORIENTATION_LANDSCAPE;
++            if (dw <= dh){                                                                                                                                                  
++                config.orientation = Configuration.ORIENTATION_PORTRAIT;
++                setLandscapeProperty("0");
++            } else {
++                config.orientation = Configuration.ORIENTATION_LANDSCAPE;
++                setLandscapeProperty("1");
++            } 
+         }
+ 
+         // Update application display metrics.
